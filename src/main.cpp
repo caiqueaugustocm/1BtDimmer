@@ -10,22 +10,21 @@ Ticker ticker;
 
 enum STATE
 {
-  DOWN, UP, FALL, MIN, RISE, MAX, PRESS, RELEASE
+  DOWN, UP, FALL, MIN, RISE, MAX
 };
 
-void transitionState();
+void transitionStatePress();
 void transitionStateRelease();
 
 void init();
 void PressButton();
 void ReleaseButton();
-void defaultState();
-void transitionState();
-void manual_count_fun();
+void transitionStatePress();
+void ledBlink();
 
 int current_state;
-int manual_count = 0;
-int stateButton;
+bool stateButton;
+float frequency;
 
 int main() {
     init();
@@ -36,85 +35,70 @@ int main() {
     while(1) {
         wait(1);
         printf("Led %f\n",ledIntensity.read());
-        printf("count %d\n",manual_count);
     }
 }
 
-void transitionState(){
-    if(stateButton == PRESS){
+void transitionStatePress(){
+    ticker.attach(&transitionStatePress,1);
+    timeout.attach(&ledBlink, 0.2);
+    if(stateButton){
         switch (current_state){
             case UP:
-                printf("UP\n");
-                blue_led = 1;
-                red_led = 0;
-                if (stateButton == RELEASE && manual_count>0 && manual_count<10){
-                    current_state = DOWN;
-                }else if(stateButton == PRESS && manual_count>=1 && ledIntensity<=1.0){
-                    current_state = RISE;
-                }
+                current_state = RISE;
+                printf("RISE\n");
+                // stateButton = false;
                 break;
             case DOWN:
-                blue_led = 0;
-                red_led = 1;
-                printf("DOWN\n");
-                if (stateButton == RELEASE && manual_count>0 && manual_count<10){
-                    current_state = UP;
-                }else if(stateButton == PRESS && manual_count>=1 && ledIntensity>0.0){
-                    current_state = FALL;
-                }
+                current_state = FALL;
+                printf("FALL\n");
+                // stateButton = false;
                 break;
             case FALL:
-                printf("FALL\n");
-                if (stateButton == PRESS && ledIntensity>0.0){
-                    ledIntensity = ledIntensity - 0.05f;
-                }else if(stateButton == PRESS && ledIntensity==0.0){
+                if(ledIntensity==0){
                     current_state = MIN;
-                }
-                else if(stateButton == RELEASE && ledIntensity>0.0){
-                    current_state = DOWN;
+                    printf("MIN\n");
+                }else{
+                    ledIntensity = ledIntensity - 0.05;
                 }
                 break;
             case RISE:
-                printf("RISE\n");
-                if(stateButton == PRESS && ledIntensity<1.0){
-                    ledIntensity = ledIntensity + 0.05f;
-                }else if(stateButton == PRESS && ledIntensity ==1.0){
+                if(ledIntensity==1){
                     current_state = MAX;
-                }else if(stateButton == RELEASE && ledIntensity<1.0){
-                    current_state = UP;
+                    printf("MAX\n");
+                }else{
+                    ledIntensity = ledIntensity + 0.05;
                 }
                 break;
-        //     case MAX:
-        //         printf("MAX\n");
-        //         if(stateButton == RELEASE){
-        //             current_state = DOWN;
-        //             manual_count = 0;
-        //         }
-        //         break;
-        //     case MIN:
-        //         printf("MIN\n");
-        //         if(stateButton == RELEASE){
-        //             current_state = UP;
-        //             manual_count = 0;
-        //         }
-        //         break;
+            default:
+                break;
+        }
+        if (ledIntensity >= 1) {
+                current_state = MAX;
+                printf("MAX\n");
+                ledIntensity = 1;
+        } else if (ledIntensity <= 0) {
+                current_state = MIN;
+                printf("MIN\n");
+                ledIntensity = 0;
         }
     }
 }
 
 void transitionStateRelease(){
-    if(current_state == MAX){
+    if(current_state == MAX || current_state == UP ||current_state == FALL){
         if(ledIntensity > 0){
             blue_led = 0;
             red_led = 1;
-            state = DOWN;
+            current_state = DOWN;
+            printf("DOWN\n");
         }
     }
-    else if(current_state == MIN){
+    else if(current_state == MIN || current_state == DOWN || current_state == RISE){
         if(ledIntensity < 1){
             blue_led = 1;
-            red_led = 1;
-            state = UP;
+            red_led = 0;
+            current_state = UP;
+            printf("UP\n");
         }
     }
 }
@@ -124,25 +108,43 @@ void init(){
     red_led = 0;
     ledIntensity = 0.5;
     current_state = UP;
-}
-
-void manual_count_fun(){
-    manual_count++;
+    printf("UP\n");
 }
 
 void PressButton()
 {
     printf("Press Button\n");
-    stateButton = PRESS;
-    ticker.attach(&transitionState,1);
-    timeout.attach(&manual_count_fun,0.1);
+    stateButton = true;
+    ticker.attach(&transitionStatePress,1.0);
 }
 
 void ReleaseButton()
 {
     printf("Release Button\n");
-    timeout.detach();
-    stateButton = RELEASE;
-    transitionState();
-    manual_count = 0;
+    stateButton = false;
+    transitionStateRelease();
+}
+
+void ledBlink(){
+    switch(current_state){
+        case FALL:
+            frequency = (0.2 * (ledIntensity / 0.05 - 1));
+            red_led = !red_led;
+            break;
+        case RISE:
+            frequency = 0.2 * (1 + ledIntensity / 0.05);
+            blue_led = !blue_led;
+            break;
+        case MIN:
+            frequency = 0.1;
+            red_led = !red_led;
+            break;
+        case MAX:
+            frequency = 0.1;
+            blue_led = !blue_led;
+            break;
+        default:
+            break;
+    }
+    timeout.attach(&ledBlink, frequency);
 }
